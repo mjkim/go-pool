@@ -13,20 +13,20 @@ type DataSource interface {
 }
 
 type Config struct {
-  Max_active int
-  Max_idle int
-  Wait_for_idle bool
-  Test_on_borrow bool
-  Test_on_return bool
+  MaxActive int
+  MaxIdle int
+  WaitForIdle bool
+  TestOnBorrow bool
+  TestOnReturn bool
 }
 
 func NewConfig() Config {
   return Config {
-    Max_active: 8,
-    Max_idle: 8,
-    Wait_for_idle: true,
-    Test_on_borrow: true,
-    Test_on_return: true,
+    MaxActive: 8,
+    MaxIdle: 8,
+    WaitForIdle: true,
+    TestOnBorrow: true,
+    TestOnReturn: true,
   }
 }
 
@@ -40,13 +40,24 @@ type Pool struct {
   config Config
 
   lock sync.Mutex
+
   active_list map[interface{}]*PooledObject
   idle_list []*PooledObject
 }
 
 func NewPool(datasource DataSource, config Config) Pool {
+  idle_pool_cap := config.MaxIdle
+  if idle_pool_cap < 0 {
+    idle_pool_cap = 65535
+  }
+
+  if config.MaxActive < 0 {
+    config.MaxActive = 65535
+  }
+
   pool := Pool{datasource: datasource, config: config}
-  pool.idle_list = make([]*PooledObject, 0, config.Max_idle)
+
+  pool.idle_list = make([]*PooledObject, 0, idle_pool_cap)
   pool.active_list = make(map[interface{}]*PooledObject)
   return pool
 }
@@ -56,7 +67,7 @@ func (pool* Pool) tryBorrowObject() interface{} {
   defer pool.lock.Unlock()
 
   var pooled_obj *PooledObject;
-  if len(pool.idle_list) == 0 && len(pool.active_list) < pool.config.Max_active {
+  if len(pool.idle_list) == 0 && len(pool.active_list) < pool.config.MaxActive {
     obj := pool.datasource.CreateObject()
     pooled_obj = &PooledObject{object: obj}
   } else if len(pool.idle_list) > 0 {
@@ -97,15 +108,15 @@ func (pool* Pool) BorrowObject() interface{} {
   for true {
     obj = pool.tryBorrowObject()
     if obj == nil {
-      if pool.config.Wait_for_idle {
-        log.Debugf("BorrowObject wait for idle object")
+      if pool.config.WaitForIdle {
         time.Sleep(10 * time.Millisecond)
+        log.Debugf("BorrowObject wait for idle object")
         continue
       } else {
         panic("not implement!")
       }
     } else {
-      if pool.config.Test_on_borrow {
+      if pool.config.TestOnBorrow {
         if !pool.datasource.IsValidObject(obj) {
           log.Debugf("InvalidObject", obj)
           pool.datasource.DestroyObject(obj)
@@ -132,14 +143,13 @@ func (pool *Pool) ReturnObject(object interface{}) {
     panic("invalid object")
   } else {
     delete(pool.active_list, object)
-    if pool.config.Test_on_return && !pool.datasource.IsValidObject(object) {
+    if pool.config.TestOnReturn && !pool.datasource.IsValidObject(object) {
       log.Debugf("Return InvalidObject", object)
       pool.datasource.DestroyObject(object)
       log.Debugf("DestroyObject#{active_list:%d idle_list:%d}", len(pool.active_list), len(pool.idle_list))
     } else {
       pooled_obj.last_used = time.Now()
       pool.idle_list = append(pool.idle_list, pooled_obj)
-
       log.Debugf("ReturnObject#{active_list:%d idle_list:%d}", len(pool.active_list), len(pool.idle_list))
     }
   }

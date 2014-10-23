@@ -64,7 +64,7 @@ func TestWaitIdleObject(t *testing.T) {
   pool := NewPool(&IntegerDataSource{}, config)
 
   list := make([]interface{}, 0)
-  for i := 1 ; i <= pool.config.Max_active ; i++ {
+  for i := 1 ; i <= pool.config.MaxActive ; i++ {
     obj := pool.BorrowObject()
     assert.Equal(t, i, obj)
     list = append(list, obj)
