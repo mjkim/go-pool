@@ -109,7 +109,7 @@ func (pool* Pool) BorrowObject() interface{} {
     obj = pool.tryBorrowObject()
     if obj == nil {
       if pool.config.WaitForIdle {
-        time.Sleep(10 * time.Millisecond)
+        time.Sleep(1 * time.Millisecond)
         log.Debugf("BorrowObject wait for idle object")
         continue
       } else {
@@ -144,13 +144,17 @@ func (pool *Pool) ReturnObject(object interface{}) {
   } else {
     delete(pool.active_list, object)
     if pool.config.TestOnReturn && !pool.datasource.IsValidObject(object) {
-      log.Debugf("Return InvalidObject", object)
       pool.datasource.DestroyObject(object)
-      log.Debugf("DestroyObject#{active_list:%d idle_list:%d}", len(pool.active_list), len(pool.idle_list))
+      log.Debugf("DestroyObject#{active_list:%d idle_list:%d} : InvalidObject", len(pool.active_list), len(pool.idle_list))
     } else {
-      pooled_obj.last_used = time.Now()
-      pool.idle_list = append(pool.idle_list, pooled_obj)
-      log.Debugf("ReturnObject#{active_list:%d idle_list:%d}", len(pool.active_list), len(pool.idle_list))
+      if len(pool.idle_list) < pool.config.MaxIdle {
+        pooled_obj.last_used = time.Now()
+        pool.idle_list = append(pool.idle_list, pooled_obj)
+        log.Debugf("ReturnObject#{active_list:%d idle_list:%d}", len(pool.active_list), len(pool.idle_list))
+      } else {
+        pool.datasource.DestroyObject(object)
+        log.Debugf("DestroyObject#{active_list:%d idle_list:%d} : len(idle_list) > MaxIdle", len(pool.active_list), len(pool.idle_list))
+      }
     }
   }
 }
